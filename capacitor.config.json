@@ -1,0 +1,22 @@
+{
+  "appId": "com.docexpire.app",
+  "appName": "DocExpire",
+  "webDir": "client/dist",
+  "bundledWebRuntime": false,
+  "loggingBehavior": "none",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0d1b2a",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,
+      "splashImmersive": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0d1b2a",
+      "overlaysWebView": false
+    }
+  }
+}

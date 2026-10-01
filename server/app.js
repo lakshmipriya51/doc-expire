@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 
 const config = require('./config');
 const { apiLimiter } = require('./middleware/rateLimit');
+const { serveClient } = require('./middleware/serveClient');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const authRoutes = require('./routes/authRoutes');
@@ -62,6 +63,11 @@ function createApp() {
   app.use('/api/documents', documentRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/dashboard', dashboardRoutes);
+
+  // Serves the built client when it exists. Mounted after the API routes, and
+  // it skips /api itself, so it can never shadow an endpoint or turn an unknown
+  // API route into an HTML page.
+  serveClient(app);
 
   app.use(notFound);
   app.use(errorHandler);

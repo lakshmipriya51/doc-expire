@@ -26,6 +26,9 @@ is still valid:
 - [Getting started](#getting-started)
 - [Environment variables](#environment-variables)
 - [Running the app](#running-the-app)
+- [Running it permanently on localhost](#running-it-permanently-on-localhost)
+- [Deploying to Render](#deploying-to-render)
+- [Mobile app](#mobile-app)
 - [Demo data](#demo-data)
 - [API reference](#api-reference)
 - [How reminders work](#how-reminders-work)
@@ -85,6 +88,9 @@ Helmet, CORS, express-validator, express-rate-limit, Nodemailer (optional)
 
 **Frontend** — React 18, Vite, React Router, Axios, plain CSS
 
+**Mobile** — PWA (manifest + service worker) and Capacitor 7 for native iOS and
+Android builds
+
 No UI component library and no state-management library are used, so the
 frontend stays readable and dependency-light.
 
@@ -95,7 +101,14 @@ frontend stays readable and dependency-light.
 ```
 doc-expire/
 ├── package.json          # Root scripts that orchestrate both workspaces
-├── scripts/dev.js        # Runs API and client together
+├── render.yaml           # Render deployment blueprint
+├── capacitor.config.json # Native app configuration
+├── scripts/
+│   ├── dev.js                  # Runs API and client together
+│   ├── serve-local.js          # Single fixed-port server (5050)
+│   ├── install-local-service.js# macOS auto-start service
+│   └── generate-icons.js       # Generates every app icon from code
+├── resources/           # 1024px icon + splash source art for native builds
 ├── .env.example
 │
 ├── server/
@@ -105,20 +118,24 @@ doc-expire/
 │   ├── models/           # User, Document, Notification
 │   ├── controllers/      # auth, document, notification, dashboard
 │   ├── routes/           # Route tables
-│   ├── middleware/       # auth, validation, uploads, rate limits
+│   ├── middleware/       # auth, validation, uploads, rate limits, static client
 │   ├── utils/            # expiry maths, reminders, email, seed data
-│   ├── scripts/          # In-memory database launcher
+│   ├── scripts/          # In-memory DB launcher, end-to-end smoke test
 │   ├── tests/            # Automated test suite
 │   └── uploads/          # User uploads (git-ignored)
 │
-└── client/
-    ├── vite.config.js
-    └── src/
-        ├── pages/        # Landing, auth, dashboard, documents, profile
-        ├── components/   # Layout, tables, forms, dialogs
-        ├── services/     # Axios API modules
-        ├── context/      # Auth context
-        └── styles/       # Global stylesheet
+├── client/
+│   ├── vite.config.js
+│   ├── public/           # PWA manifest, service worker, icons
+│   └── src/
+│       ├── pages/        # Landing, auth, dashboard, documents, profile
+│       ├── components/   # Layout, tables, forms, dialogs
+│       ├── services/     # Axios API modules
+│       ├── context/      # Auth context
+│       └── styles/       # Global stylesheet
+│
+├── ios/                  # Capacitor iOS project (Xcode)
+└── android/              # Capacitor Android project (Gradle)
 ```
 
 ---
@@ -172,6 +189,7 @@ prefixed with `VITE_` reach the browser.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `5000` | API port |
+| `LOCAL_PORT` | `5050` | Port used by `npm run serve:local` and the background service |
 | `NODE_ENV` | `development` | Runtime mode |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017/docexpire` | Database connection string. Accepts an Atlas `mongodb+srv://` URL too |
 | `JWT_SECRET` | — | **Required.** Signing key for auth tokens |
@@ -233,6 +251,226 @@ npm run build
 ```
 
 The static client bundle is written to `client/dist`.
+
+Once the client is built, the API serves it too, so a single process hosts the
+whole app. See the next section.
+
+---
+
+## Running it permanently on localhost
+
+The usual `npm run dev` uses two processes on two ports. For a single fixed
+address that never moves, use:
+
+```bash
+npm run serve:local
+```
+
+This builds the client if needed, then serves the **API and the web app together
+on port 5050**:
+
+```
+http://localhost:5050
+```
+
+Because the app is served from the same origin as the API, there is no CORS
+setup and no second port to remember.
+
+### Start it automatically at login
+
+```bash
+npm run service:install
+```
+
+This registers a macOS LaunchAgent (`dev.docexpire.server`), so DocExpire starts
+by itself when you log in and restarts if the process dies.
+
+The installer copies the app into `~/Library/Application Support/DocExpire` and
+runs it from there, because the project folder is often a cloud-synced location
+(iCloud, Drive, Dropbox) and Node cannot reliably read modules from those
+network folders. Logs land in that folder too:
+
+```
+~/Library/Application Support/DocExpire/logs/service.out.log
+~/Library/Application Support/DocExpire/logs/service.err.log
+```
+
+Re-run `npm run service:install` after changing the code. It redeploys the copy
+and restarts the service, so it is also the update command.
+
+```bash
+npm run service:uninstall                    # stop and remove the service
+npm run service:uninstall -- --purge         # also delete the deployed copy
+```
+
+On first install it builds the client if needed and copies `server/.env` into
+the deployed folder, creating one with a generated `JWT_SECRET` if you have not
+set one up, so the service starts successfully instead of failing on every boot.
+
+### Reaching it from your phone
+
+The server binds to `0.0.0.0`, so a phone on the same wifi can open it:
+
+```bash
+ipconfig getifaddr en0     # your Mac's LAN address
+```
+
+Then visit `http://<that-address>:5050` on the phone.
+
+> Use the HTTPS Render deployment below for anything beyond your own network.
+> Plain HTTP on a LAN address is fine for local testing, but a login token sent
+> over an unencrypted connection can be read by anyone on the same network.
+
+**Change the port** by adding `LOCAL_PORT=5050` to `server/.env`.
+
+---
+
+## Deploying to Render
+
+The app is deployed as **one service**: Express serves the API *and* the built
+client, so the web app and the API share a single origin and URL.
+
+`render.yaml` in the repository root holds the whole blueprint.
+
+### 1. Create a MongoDB Atlas database
+
+1. Sign up at <https://www.mongodb.com/atlas> (the free M0 tier is enough).
+2. Create a free cluster.
+3. Under **Database Access**, add a user with a password.
+4. Under **Network Access**, allow access from anywhere (`0.0.0.0/0`). Required
+   because Render does not have a static outbound IP.
+5. Copy the connection string. It looks like:
+
+   ```
+   mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
+   ```
+
+   Add a database name: `mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/docexpire?retryWrites=true&w=majority`
+
+### 2. Deploy
+
+1. Push this repository to GitHub (it already is).
+2. Go to <https://dashboard.render.com>, create a free account.
+3. **New → Blueprint**, then select the `doc-expire` repository.
+4. Render reads `render.yaml` and asks for the two values marked `sync: false`:
+   - `MONGODB_URI` — the Atlas string from step 1
+   - `CLIENT_URL` — for the first deploy this can be the Render URL Render is
+     about to give you, e.g. `https://docexpire.onrender.com`
+5. Deploy, then watch the **Logs** tab. A successful build ends with
+   `[startup] Serving the web client...`.
+
+### 3. Fix CORS after the first deploy
+
+Render gives the service its URL on first deploy. Set `CLIENT_URL` in the Render
+dashboard to exactly that origin (no trailing slash), save, and redeploy.
+Without this the browser blocks API calls from the deployed page.
+
+### What the free tier means
+
+- The service sleeps after 15 minutes of inactivity, so the first request after
+  a pause takes a few seconds to wake up.
+- Uploads are stored on the container filesystem, which is **ephemeral** on the
+  free plan: a restart or redeploy discards uploaded files. Document records
+  survive in MongoDB, but attached files do not. Use a persistent disk or object
+  storage if you need files to last.
+
+---
+
+## Mobile app
+
+The React client is packaged for phones two ways. Both reuse the same codebase,
+so there is no second UI to maintain.
+
+### Install as a PWA (no app store)
+
+The client ships a web app manifest and a service worker, so the deployed site
+can be installed straight from the browser:
+
+- **Android / Chrome** — menu → *Install app* or *Add to Home screen*
+- **iOS / Safari** — Share → *Add to Home Screen*
+
+It launches in its own window with the branded icon and splash, works offline
+for the app shell, and is served over HTTPS so browsers allow installation.
+
+The service worker **never caches `/api` responses**. Document data belongs to
+one signed-in user, so caching it would risk showing one person's documents to
+another person using the same device. Only the app shell is cached.
+
+### Native app with Capacitor
+
+[Capacitor](https://capacitorjs.com) wraps the built client in a real native
+shell, giving an actual `.ipa` / `.apk` with native status bar and splash
+screen. It does **not** require rewriting any UI.
+
+```bash
+npm run mobile:sync       # build the client and copy it into ios/ and android/
+npm run mobile:ios        # build + open in Xcode
+npm run mobile:android    # build + open in Android Studio
+```
+
+The native projects (`ios/`, `android/`) are committed, so the app opens
+immediately. Always run `npm run mobile:sync` after changing anything in
+`client/`.
+
+#### Pointing the app at your API
+
+The native shell cannot use `localhost`, because that would be the phone itself.
+Before syncing, tell the client where your API lives:
+
+```bash
+# client/.env.production
+VITE_API_URL=https://docexpire.onrender.com
+```
+
+Then run `npm run mobile:sync`. Deploy the API first, otherwise the app opens
+and cannot load anything.
+
+#### Building the binaries
+
+**iOS** — needs Xcode and CocoaPods:
+
+```bash
+brew install cocoapods
+npm run mobile:sync
+cd ios/App && pod install
+open App.xcworkspace
+```
+
+Then in Xcode choose a simulator and press Run, or use
+`npm run mobile:build:ios` for a command-line simulator build. Installing on a
+real iPhone requires an Apple Developer account (free accounts work for
+simulator-only testing; a device build needs a paid account and a signing
+team).
+
+**Android** — needs Android Studio with the SDK installed. Once that is done:
+
+```bash
+npm run mobile:build:android
+```
+
+The debug APK is written to `android/app/build/outputs/apk/debug/`. A signed
+release APK or an `.aab` for the Play Store additionally needs a keystore.
+
+#### App identity
+
+| | |
+| --- | --- |
+| App id | `com.docexpire.app` |
+| App name | DocExpire |
+| Config | `capacitor.config.json` |
+
+#### Icons and splash screens
+
+All artwork is **generated from code**, not committed as hand-made binaries, so
+it can be regenerated at any size and stays consistent:
+
+```bash
+npm run icons
+```
+
+This writes the PWA icons to `client/public/icons/` and the 1024px / 2732px
+native sources to `resources/`. To push new artwork into the native projects,
+run `npx capacitor-assets generate --android --ios` afterwards.
 
 ---
 
@@ -411,6 +649,25 @@ that `MAX_UPLOAD_MB` fits your files.
 
 **Reminder looks stale** — The feed refreshes on sign in, on document changes
 and when it is opened. Reload the page.
+
+**`Port 5000 is already in use`** — Something else owns that port. On macOS the
+AirPlay receiver often takes 5000, so run `npm run serve:local` (which uses 5050)
+or set a different `PORT`.
+
+**The deployed page loads but API calls fail in the console** — Almost always
+CORS. `CLIENT_URL` on Render must exactly match the deployed origin, with no
+trailing slash, and the service must be redeployed after changing it.
+
+**The native app opens but shows an error** — The shell cannot reach
+`localhost`. Set `VITE_API_URL` in `client/.env.production` to your deployed
+HTTPS API, run `npm run mobile:sync`, and rebuild the app.
+
+**`cap add ios` fails with "CocoaPods is not installed"** — Run
+`brew install cocoapods`.
+
+**The background service did not start** — Check
+`~/Library/Application Support/DocExpire/logs/service.err.log`. On first launch
+macOS may also ask for permission to allow the item to run.
 
 ---
 

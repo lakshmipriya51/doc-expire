@@ -1,0 +1,64 @@
+# DocExpire on Render
+#
+# One web service runs the Express API and serves the built React client from
+# the same origin, so there is no CORS setup and no second host to manage.
+#
+# Deploy: https://dashboard.render.com/ -> New -> Blueprint -> pick this repo.
+# Render reads the values below and prompts for the secrets marked sync: false.
+#
+# After the first deploy, set CLIENT_URL to the https://<your-service>.onrender.com
+# origin and redeploy, otherwise the browser will be blocked by CORS.
+
+services:
+  - type: web
+    name: docexpire
+    runtime: node
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    # The free plan sleeps after 15 minutes idle, so the first request after a
+    # pause takes a few seconds to wake up.
+    autoDeploy: true
+    buildCommand: npm run install:all && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+
+      # Render injects the bound port; server.js binds 0.0.0.0 so this works.
+      - key: PORT
+        value: "10000"
+
+      # Create a free M0 cluster at https://www.mongodb.com/atlas and paste the
+      # connection string here. Keep the password out of the repository.
+      - key: MONGODB_URI
+        sync: false
+
+      # Generate with:
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Must match the deployed origin, otherwise the browser is blocked by CORS.
+      - key: CLIENT_URL
+        sync: false
+
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: EXPIRING_SOON_DAYS
+        value: "30"
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: MAX_UPLOAD_MB
+        value: "5"
+
+      # Uploads live on the container filesystem, which is ephemeral on the free
+      # plan. Set this to false so the rate limiter stays on in production.
+      - key: RATE_LIMIT_DISABLED
+        value: "false"
+
+      # Email reminders are opt-in. Leave off unless an SMTP account is set up.
+      - key: EMAIL_ENABLED
+        value: "false"

@@ -2,6 +2,7 @@
 
 const config = require('./config');
 const { connectDatabase, disconnectDatabase, mongoose } = require('./config/db');
+const { isClientBuilt } = require('./middleware/serveClient');
 const createApp = require('./app');
 
 const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET'];
@@ -29,8 +30,15 @@ async function start() {
   }
 
   const app = createApp();
-  const server = app.listen(config.port, () => {
+  // Bind to every interface so the service is reachable from a phone on the
+  // same wifi and from hosts that forward to a container, not just localhost.
+  const server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`[startup] DocExpire API listening on http://localhost:${config.port} (${config.nodeEnv})`);
+    if (isClientBuilt()) {
+      console.log(`[startup] Serving the web client, so the app is ready at http://localhost:${config.port}`);
+    } else {
+      console.log('[startup] No client build found. Run "npm run build" at the repo root to serve the web app.');
+    }
   });
 
   // Without this a busy port kills the process with a raw stack trace, which is
