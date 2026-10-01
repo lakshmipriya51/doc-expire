@@ -442,7 +442,8 @@ real iPhone requires an Apple Developer account (free accounts work for
 simulator-only testing; a device build needs a paid account and a signing
 team).
 
-**Android** — needs Android Studio with the SDK installed. Once that is done:
+**Android** — needs the Android SDK (platform 35 + build-tools 35). Once that
+is done:
 
 ```bash
 npm run mobile:build:android
@@ -450,6 +451,22 @@ npm run mobile:build:android
 
 The debug APK is written to `android/app/build/outputs/apk/debug/`. A signed
 release APK or an `.aab` for the Play Store additionally needs a keystore.
+
+#### Install the ready-made APK
+
+A working debug APK is committed at
+[`releases/docexpire-android-1.0-debug.apk`](releases/docexpire-android-1.0-debug.apk),
+so the app can be installed without any build tools:
+
+1. Copy it to the phone (cable, AirDrop, or cloud drive).
+2. Tap it and allow **Install from unknown sources** when Android asks.
+3. Launch **DocExpire**.
+
+It is signed with the standard Android debug certificate, so it installs
+directly but cannot be uploaded to the Play Store. Because it talks to a
+server, set `VITE_API_URL` to your deployed HTTPS API and run
+`npm run mobile:sync` before building an APK you intend to keep using; an APK
+built without it falls back to `localhost`, which a phone cannot reach.
 
 #### App identity
 
