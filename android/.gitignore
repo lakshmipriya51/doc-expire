@@ -92,8 +92,11 @@ lint/tmp/
 # Cordova plugins for Capacitor
 capacitor-cordova-android-plugins
 
-# Copied web assets
-app/src/main/assets/public
+# Copied web assets.
+# Committed on purpose: Gradle packages this folder straight into the APK, so
+# ignoring it would let a clean checkout build an APK with no web assets at all.
+# Refresh it with "npm run mobile:sync".
+# app/src/main/assets/public
 
 # Generated Config files
 app/src/main/assets/capacitor.config.json

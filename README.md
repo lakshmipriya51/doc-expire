@@ -166,7 +166,6 @@ npm install --prefix client
 
 ```bash
 cp server/.env.example server/.env
-cp client/.env.example client/.env
 ```
 
 Then generate a real JWT secret and paste it into `server/.env`:
@@ -176,6 +175,10 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
 Update `MONGODB_URI` if you are not using a default local MongoDB.
+
+You do **not** need a `client/.env`. The server serves the built client, so the
+browser calls the API on its own origin and no client configuration is required.
+See [`client/.env`](#clientenv) for when one is actually needed.
 
 ---
 
@@ -210,7 +213,29 @@ prefixed with `VITE_` reach the browser.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `VITE_API_URL` | `http://localhost:5000` | Base URL of the API |
+| `VITE_API_URL` | *(unset — same origin)* | Absolute origin of the API, used only when the client is not served by the API |
+
+The client needs **no configuration for the web app**. The server ships the
+built client, so `API_BASE_URL` is empty and every request goes to `/api` on the
+same origin that served the page. That is the correct setup for every web
+deployment and it is why there is no CORS to configure.
+
+Set `VITE_API_URL` only when the client and the API are on different origins:
+
+- **Mobile builds (required).** A Capacitor WebView runs on the
+  `capacitor://localhost` origin, which has nothing behind it. Put the deployed
+  URL in `client/.env.production` before `npm run mobile:sync`.
+- **Local development (optional).** `npm run dev` serves the client on 5173 and
+  the API on 5000, and falls back to `http://localhost:5000` automatically when
+  the variable is unset.
+
+> Do **not** create `client/.env` with `VITE_API_URL=http://localhost:5000` for a
+> real build. Vite loads `.env` in *every* mode, so that value gets compiled
+> into production and mobile bundles and makes them point at the build machine.
+> Use `client/.env.production` for the production value instead.
+
+`VITE_API_URL` is compiled into the JavaScript bundle and is readable by anyone
+using the app, so never put a secret in it.
 
 ---
 
@@ -446,27 +471,56 @@ team).
 is done:
 
 ```bash
-npm run mobile:build:android
+npm run mobile:build:android                     # debug APK
+cd android && ./gradlew assembleRelease          # release APK
 ```
 
-The debug APK is written to `android/app/build/outputs/apk/debug/`. A signed
-release APK or an `.aab` for the Play Store additionally needs a keystore.
+Outputs land in `android/app/build/outputs/apk/{debug,release}/`.
+
+Release signing is opt-in: `android/app/build.gradle` enables it only when all
+four of these are present in `~/.gradle/gradle.properties` (chmod 600), and
+otherwise produces an unsigned `app-release-unsigned.apk` rather than failing:
+
+```properties
+DOCEXPIRE_KEYSTORE_FILE=/absolute/path/to/docexpire-release.keystore
+DOCEXPIRE_KEYSTORE_PASSWORD=...
+DOCEXPIRE_KEY_ALIAS=docexpire
+DOCEXPIRE_KEY_PASSWORD=...
+```
+
+Keystores, `*.jks`, `*.p12`, `*.keystore` and `*.mobileprovision` are all
+git-ignored; keep them out of the repository. An `.aab` for the Play Store is
+produced with `./gradlew bundleRelease`.
 
 #### Install the ready-made APK
 
-A working debug APK is committed at
-[`releases/docexpire-android-1.0-debug.apk`](releases/docexpire-android-1.0-debug.apk),
-so the app can be installed without any build tools:
+Two APKs are committed under [`releases/`](releases), so the app can be installed
+without any build tools:
 
-1. Copy it to the phone (cable, AirDrop, or cloud drive).
+| File | Use it for |
+| --- | --- |
+| [`docexpire-android-1.0-release.apk`](releases/docexpire-android-1.0-release.apk) | Sideloading on your own phone. Signed with the DocExpire release key |
+| [`docexpire-android-1.0-debug.apk`](releases/docexpire-android-1.0-debug.apk) | Debugging only. Signed with the throwaway Android debug certificate |
+
+To install:
+
+1. Copy the `.apk` to the phone (cable, AirDrop, or cloud drive).
 2. Tap it and allow **Install from unknown sources** when Android asks.
 3. Launch **DocExpire**.
 
-It is signed with the standard Android debug certificate, so it installs
-directly but cannot be uploaded to the Play Store. Because it talks to a
-server, set `VITE_API_URL` to your deployed HTTPS API and run
-`npm run mobile:sync` before building an APK you intend to keep using; an APK
-built without it falls back to `localhost`, which a phone cannot reach.
+Both are signed (v1 + v2) and install directly, but neither can be uploaded to
+Google Play — the debug one is signed with a throwaway key, and the release key
+is not an app-signing key held by Google.
+
+**Both shipped APKs were built without `VITE_API_URL`**, because no API was
+deployed when they were produced. That is correct for the web app but not for a
+phone: the native shell falls back to its own `capacitor://localhost` origin,
+which no server answers on, so the app logs a warning and cannot load data. To
+get a usable build, set `VITE_API_URL` to your deployed HTTPS API, run
+`npm run mobile:sync`, and rebuild.
+
+See [`releases/RELEASE_NOTES.md`](releases/RELEASE_NOTES.md) for checksums,
+signing details, and how to sign future versions with the same key.
 
 #### App identity
 
@@ -628,18 +682,54 @@ by throttling.
 
 ## Security notes
 
+### Access control
+
 - Passwords are hashed with bcrypt and never returned by the API.
-- Every document and file route checks ownership, so one user cannot read or
-  download another user's uploads by guessing an ID.
-- Uploads are restricted by extension and MIME type, capped at 5 MB, and stored
-  outside the static directory with randomly generated filenames. They are only
-  reachable through the authenticated file routes.
+- Every document and file route checks ownership, so one user cannot read,
+  update, delete or download another user's uploads by guessing an ID. This is
+  covered by tests for each verb, not just by inspection.
 - Auth endpoints are rate limited to slow down credential guessing.
-- Helmet sets standard security headers; CORS is restricted to `CLIENT_URL`.
 - Validation happens on the server as well as in the browser.
-- Secrets live in `.env` files that are git-ignored. Only `.env.example`
-  templates are committed.
 - Stack traces are hidden from error responses outside development.
+
+### Uploads
+
+- Capped at 5 MB, and rejected unless the declared MIME type *and* the actual
+  file content agree. Magic-byte checking means a file named `invoice.pdf` that
+  is really an executable is rejected, not just mislabelled ones.
+- Stored outside the static directory under randomly generated filenames, so
+  uploads are only reachable through the authenticated file routes.
+- Nothing under `server/uploads/` is committed.
+
+### Configuration and secrets
+
+- Secrets live in `.env` files that are git-ignored. Only `.env.example`
+  templates are committed, and they contain placeholders only.
+- The server **refuses to start in production** with a missing, placeholder or
+  trivially short `JWT_SECRET`, or with a `MONGODB_URI` that still contains the
+  example placeholder. A deployment cannot quietly run on a shared secret.
+- `.gitignore` excludes `*.keystore`, `*.jks`, `*.p12`, `*.pfx` and
+  `*.mobileprovision`, so signing material cannot be committed by accident.
+- Anything prefixed `VITE_` is compiled into the client bundle and is therefore
+  public. Never put a secret in `client/.env*`.
+
+### Response headers
+
+- Helmet sets the standard security headers, and the static client is served
+  with a strict `Content-Security-Policy` (`script-src 'self'`, no inline
+  scripts, `object-src 'none'`, `frame-ancestors 'none'`).
+- CORS is restricted to `CLIENT_URL`.
+- The service worker never caches `/api` responses, so one user's documents
+  cannot be shown to another user of the same device.
+
+### Shipped binaries
+
+- The committed APKs are signed but self-hosted; verify them with
+  `shasum -a 256` and `apksigner verify` before installing. Checksums are in
+  [`releases/RELEASE_NOTES.md`](releases/RELEASE_NOTES.md).
+- The native web assets under `android/app/src/main/assets/public` and
+  `ios/App/App/public` are committed on purpose, so a clean checkout builds
+  APKs that actually contain the app. Refresh them with `npm run mobile:sync`.
 
 ---
 

@@ -422,6 +422,37 @@ test('rejects disallowed file types', async () => {
   assert.match(created.body.message, /only pdf, jpg, jpeg and png/i);
 });
 
+test('rejects a file whose contents do not match its declared type', async () => {
+  const fs = require('fs');
+  const config = require('../config');
+
+  // Declares itself as a PDF but contains a Windows executable. Only the bytes
+  // on disk can catch this, because the client controls the Content-Type.
+  const disguised = Buffer.concat([
+    Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03]),
+    Buffer.alloc(2048, 0x41),
+  ]);
+
+  const before = fs.readdirSync(config.uploadDir);
+
+  const created = await createDocument(owner.token, {}, {
+    buffer: disguised,
+    filename: 'invoice.pdf',
+    contentType: 'application/pdf',
+  });
+
+  assert.equal(created.status, 400, 'a spoofed file is refused');
+  assert.match(created.body.message, /not a valid pdf, jpg or png/i);
+
+  // Nothing may be left behind on disk after the rejection.
+  const after = fs.readdirSync(config.uploadDir);
+  assert.deepEqual(
+    after.filter((name) => !before.includes(name)),
+    [],
+    'the rejected file is deleted from the uploads directory',
+  );
+});
+
 test('rejects a file that exceeds the size limit', async () => {
   const oversize = Buffer.alloc(6 * 1024 * 1024, 'a');
 

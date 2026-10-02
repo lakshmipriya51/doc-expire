@@ -1,0 +1,47 @@
+{
+  "name": "DocExpire - Document Expiry Reminders",
+  "short_name": "DocExpire",
+  "description": "Track important documents and get reminded before they expire.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d1b2a",
+  "theme_color": "#0d1b2a",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add document",
+      "short_name": "Add",
+      "description": "Add a new document to track",
+      "url": "/documents/new"
+    },
+    {
+      "name": "Notifications",
+      "short_name": "Alerts",
+      "description": "See upcoming expiry reminders",
+      "url": "/notifications"
+    }
+  ]
+}

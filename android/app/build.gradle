@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+/**
+ * Release signing is driven entirely by properties that are never committed.
+ * Create ~/.gradle/gradle.properties (outside this repository) with:
+ *
+ *   DOCEXPIRE_RELEASE_STORE_FILE=/absolute/path/to/docexpire-release.keystore
+ *   DOCEXPIRE_RELEASE_STORE_PASSWORD=...
+ *   DOCEXPIRE_RELEASE_KEY_ALIAS=...
+ *   DOCEXPIRE_RELEASE_KEY_PASSWORD=...
+ *
+ * Without them the release build still succeeds and produces an unsigned APK,
+ * so a fresh clone never needs any secret to build.
+ */
+def hasReleaseSigning = project.hasProperty('DOCEXPIRE_RELEASE_STORE_FILE') &&
+        project.hasProperty('DOCEXPIRE_RELEASE_STORE_PASSWORD') &&
+        project.hasProperty('DOCEXPIRE_RELEASE_KEY_ALIAS') &&
+        project.hasProperty('DOCEXPIRE_RELEASE_KEY_PASSWORD')
+
 android {
     namespace "com.docexpire.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -16,10 +33,24 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Declared before buildTypes so the release build type can reference it.
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(DOCEXPIRE_RELEASE_STORE_FILE)
+                storePassword DOCEXPIRE_RELEASE_STORE_PASSWORD
+                keyAlias DOCEXPIRE_RELEASE_KEY_ALIAS
+                keyPassword DOCEXPIRE_RELEASE_KEY_PASSWORD
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

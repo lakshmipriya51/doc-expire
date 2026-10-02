@@ -40,6 +40,24 @@ if (!jwtSecret) {
   console.warn('[config] JWT_SECRET not set - using a random development secret (sessions reset on restart).');
 }
 
+// The value shipped in .env.example is public knowledge, so it must never be
+// accepted where it matters. Any token signed with it could be forged by
+// anyone who has read the repository.
+const PLACEHOLDER_SECRETS = new Set([
+  'replace_this_with_a_long_random_string',
+  'your_jwt_secret',
+  'change_me',
+  'secret',
+]);
+
+if (isProduction && PLACEHOLDER_SECRETS.has(String(jwtSecret).trim().toLowerCase())) {
+  throw new Error('JWT_SECRET is still the example placeholder. Set a long random value before deploying.');
+}
+
+if (isProduction && String(jwtSecret).length < 32) {
+  throw new Error('JWT_SECRET must be at least 32 characters long.');
+}
+
 if (isProduction && (!process.env.MONGODB_URI || process.env.MONGODB_URI.includes('your_mongodb'))) {
   throw new Error('MONGODB_URI must be set to a real connection string for production.');
 }

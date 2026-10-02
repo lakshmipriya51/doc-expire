@@ -65,14 +65,23 @@ function ensureBuilt() {
 
 function ensureEnv(targetServerDir) {
   const envPath = path.join(targetServerDir, '.env');
-  if (fs.existsSync(envPath)) return;
-
   const sourceEnv = path.join(SOURCE_SERVER, '.env');
+
+  // The project's own .env is the source of truth and is copied on every
+  // deploy. Refreshing it matters: settings such as a rotated JWT secret or a
+  // new database URI have to reach the running service, otherwise an already
+  // deployed copy would keep using stale credentials.
   if (fs.existsSync(sourceEnv)) {
-    fs.copyFileSync(sourceEnv, envPath);
-    console.log('[service] Copied your existing server/.env into the runtime copy.');
+    const current = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : null;
+    const incoming = fs.readFileSync(sourceEnv, 'utf8');
+    if (current !== incoming) {
+      fs.writeFileSync(envPath, incoming);
+      console.log('[service] Synced server/.env into the runtime copy.');
+    }
     return;
   }
+
+  if (fs.existsSync(envPath)) return;
 
   const template = path.join(SOURCE_SERVER, '.env.example');
   if (!fs.existsSync(template)) return;
@@ -190,6 +199,33 @@ function launchctl(...args) {
   return result.status === 0;
 }
 
+/** Blocks the current thread, which is fine here: the installer is synchronous. */
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Replaces the running service with the newly written plist.
+ *
+ * launchctl does not finish tearing a job down before bootout returns, so
+ * bootstrapping straight afterwards races it and fails with "Input/output
+ * error". Settle first, then retry, so reinstalling the service just works.
+ */
+function restartService() {
+  const uid = os.userInfo().uid;
+  const target = `gui/${uid}/${LABEL}`;
+
+  launchctl('bootout', target);
+  sleep(750);
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    if (launchctl('bootstrap', `gui/${uid}`, PLIST_PATH)) return true;
+    if (attempt < 5) sleep(750);
+  }
+
+  return false;
+}
+
 function main() {
   if (!isMac()) {
     console.error(
@@ -201,6 +237,7 @@ function main() {
 
   if (process.argv.includes('--uninstall')) {
     launchctl('bootout', `gui/${os.userInfo().uid}/${LABEL}`);
+    sleep(500);
     if (fs.existsSync(PLIST_PATH)) fs.unlinkSync(PLIST_PATH);
     console.log('[service] DocExpire has been removed from background services.');
 
@@ -228,9 +265,7 @@ function main() {
   fs.writeFileSync(PLIST_PATH, buildPlist());
 
   // bootout first so re-running the installer replaces the service cleanly.
-  launchctl('bootout', `gui/${os.userInfo().uid}/${LABEL}`);
-
-  if (!launchctl('bootstrap', `gui/${os.userInfo().uid}`, PLIST_PATH)) {
+  if (!restartService()) {
     console.error(`[service] Could not start the service. Try: launchctl bootstrap gui/${os.userInfo().uid} ${PLIST_PATH}`);
     process.exit(1);
   }
