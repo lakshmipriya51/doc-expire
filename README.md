@@ -199,6 +199,7 @@ prefixed with `VITE_` reach the browser.
 | `JWT_EXPIRES_IN` | `7d` | Token lifetime |
 | `BCRYPT_SALT_ROUNDS` | `12` | Password hashing cost |
 | `CLIENT_URL` | `http://localhost:5173` | Comma-separated list of allowed browser origins |
+| `NATIVE_ORIGINS` | Capacitor shell origins | Origins of the packaged mobile app, allowed separately from `CLIENT_URL` |
 | `UPLOAD_DIR` | `uploads` | Directory for uploaded files |
 | `MAX_UPLOAD_MB` | `5` | Maximum upload size |
 | `EXPIRING_SOON_DAYS` | `30` | Window for the "Expiring Soon" status |
@@ -718,7 +719,15 @@ by throttling.
 - Helmet sets the standard security headers, and the static client is served
   with a strict `Content-Security-Policy` (`script-src 'self'`, no inline
   scripts, `object-src 'none'`, `frame-ancestors 'none'`).
-- CORS is restricted to `CLIENT_URL`.
+- CORS is restricted to `CLIENT_URL`, plus the fixed Capacitor shell origins
+  (`capacitor://localhost`, `https://localhost`, `http://localhost`). The native
+  app runs on the device and never sends the deployed web origin, so without
+  those it would be rejected by CORS the moment the API is deployed — which
+  shows up as registration failing on a real phone while the web app works.
+  Allowing them is safe: the `Origin` header is set by the WebView and cannot be
+  forged by page script, so a third-party website cannot borrow them. Any other
+  origin is still refused, and both behaviours are covered by tests. Override
+  with `NATIVE_ORIGINS` if you change the Capacitor scheme.
 - The service worker never caches `/api` responses, so one user's documents
   cannot be shown to another user of the same device.
 

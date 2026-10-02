@@ -82,6 +82,21 @@ cd android && ./gradlew assembleRelease
 `VITE_API_URL` is compiled into the JavaScript bundle, so treat it as public
 and never put a secret in it.
 
+### CORS and the mobile app
+
+The packaged app runs on the device, so it sends a Capacitor shell origin
+(`capacitor://localhost`, `https://localhost` or `http://localhost`) and never
+the deployed web origin. The API therefore allows those origins **in addition
+to** `CLIENT_URL`, because a strict `CLIENT_URL`-only allowlist rejects every
+mobile request as soon as the API is deployed — registration fails on the phone
+while the same account works in a browser.
+
+This is safe: `Origin` is chosen by the WebView and cannot be forged by page
+script, so a third-party website cannot present itself as one of these origins.
+Every other origin is still refused. Both behaviours are covered by tests in
+`server/tests/api.test.js`. Set `NATIVE_ORIGINS` if you ever change the
+Capacitor scheme in `capacitor.config.json`.
+
 ## What was verified
 
 - 46/46 backend tests and 27/27 HTTP smoke tests pass against the shipped code.

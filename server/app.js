@@ -34,7 +34,16 @@ function createApp() {
     cors({
       origin(origin, callback) {
         // Allow same-origin/non-browser callers (health checks, curl, tests).
-        if (!origin || config.clientUrls.includes(origin)) return callback(null, true);
+        if (!origin) return callback(null, true);
+
+        // Deployed web frontends.
+        if (config.clientUrls.includes(origin)) return callback(null, true);
+
+        // The packaged Capacitor app. It runs on the device, so its origin is a
+        // shell origin rather than the deployed web URL, and it would otherwise
+        // be rejected by CORS the moment the API is deployed.
+        if (config.nativeOrigins.includes(origin)) return callback(null, true);
+
         return callback(new Error(`Origin ${origin} is not allowed by CORS`));
       },
       credentials: true,

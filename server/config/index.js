@@ -28,6 +28,30 @@ function readOrigins() {
     .filter(Boolean);
 }
 
+/**
+ * Origins used by the packaged Capacitor app.
+ *
+ * A native app loads the web build from the device, not from this server, so its
+ * origin is one of these fixed shell origins and never the deployed web URL.
+ * Without them a deployed API rejects every request the app makes with
+ * "Origin ... is not allowed by CORS", so registration silently fails on a real
+ * phone even though it works in a browser.
+ *
+ * Allowing them is safe: the Origin header is chosen by the WebView and cannot
+ * be forged by page script, so no third-party website can borrow these values.
+ * A real browser on a real website always sends that site's own origin.
+ */
+const NATIVE_ORIGINS = ['capacitor://localhost', 'https://localhost', 'http://localhost'];
+
+function readNativeOrigins() {
+  const configured = process.env.NATIVE_ORIGINS;
+  if (!configured) return NATIVE_ORIGINS;
+  return configured
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 const jwtSecret = process.env.JWT_SECRET;
 
 if (!jwtSecret) {
@@ -70,6 +94,7 @@ const config = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   clientUrls: readOrigins(),
+  nativeOrigins: readNativeOrigins(),
   bcryptSaltRounds: Number.parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10),
   uploadDir: process.env.UPLOAD_DIR
     ? path.resolve(process.cwd(), process.env.UPLOAD_DIR)

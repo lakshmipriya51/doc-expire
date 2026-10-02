@@ -900,3 +900,32 @@ test('expired documents keep reporting their true remaining days', async () => {
   assert.equal(document.daysRemaining, -100);
   assert.equal(document.remainingLabel, 'Expired 100 days ago');
 });
+
+// --- CORS -----------------------------------------------------------------
+//
+// The packaged mobile app loads the web build from the device, so it sends a
+// Capacitor shell origin rather than the deployed web origin. If the API
+// rejected those, every mobile request - including registration - would fail
+// against a real deployment while still working in a browser.
+
+test('the packaged mobile app origin is allowed through CORS', async () => {
+  for (const origin of ['capacitor://localhost', 'https://localhost', 'http://localhost']) {
+    const response = await request(app).get('/api/health').set('Origin', origin);
+    assert.equal(response.status, 200, `${origin} should be allowed`);
+    assert.match(
+      response.headers['access-control-allow-origin'],
+      new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`),
+      `${origin} should be echoed back in Access-Control-Allow-Origin`,
+    );
+  }
+});
+
+test('an unrelated website origin is still blocked by CORS', async () => {
+  const response = await request(app).get('/api/health').set('Origin', 'https://evil.example');
+
+  assert.notEqual(response.headers['access-control-allow-origin'], 'https://evil.example');
+  assert.ok(
+    response.status >= 400,
+    `expected a CORS rejection, got ${response.status}`,
+  );
+});
