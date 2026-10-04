@@ -46,12 +46,12 @@ android/signing.properties
 # ---------------------------------------------------------------------------
 # Native mobile builds (Capacitor)
 #
-# The generated tool directories are ignored, but android/app/src/main/assets/
-# public and ios/App/App/public ARE committed on purpose: Gradle and Xcode both
-# read the web build straight out of those folders, so if they were ignored a
-# fresh clone would still build an APK and an app bundle that contain no web
-# assets at all. Committing them keeps the shipped APKs reproducible from a
-# clean checkout. Run "npm run mobile:sync" to refresh them after a web build.
+# The generated tool directory is ignored, but android/app/src/main/assets/public
+# IS committed on purpose: Gradle reads the web build straight out of that
+# folder, so if it were ignored a fresh clone would still build an APK and an app
+# bundle that contain no web assets at all. Committing it keeps the shipped APKs
+# reproducible from a clean checkout. Run "npm run mobile:sync" to refresh it
+# after a web build.
 # ---------------------------------------------------------------------------
 android/.gradle/
 android/.idea/
@@ -61,12 +61,11 @@ android/captures/
 android/local.properties
 android/app/src/main/res/xml/config.xml
 
-ios/App/build/
-ios/App/Pods/
-ios/App/DerivedData/
-ios/DerivedData/
-ios/build/
-*.xcuserstate
+# iOS support was removed. These patterns only stop a stray local Capacitor iOS
+# checkout (for example from "npx cap add ios") being committed by accident.
+ios/
+DerivedData/
 xcuserdata/
+*.xcuserstate
 *.xcscmblueprint
 *.moved-aside

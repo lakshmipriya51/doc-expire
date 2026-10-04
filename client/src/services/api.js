@@ -1,13 +1,19 @@
 import axios from 'axios';
-import { API_BASE_URL, authStorage } from './storage';
+import { authStorage, getApiBaseUrl, isNativePlatform } from './storage';
 
 const api = axios.create({
-  baseURL: `${API_BASE_URL}/api`,
   timeout: 20000,
   headers: { 'Content-Type': 'application/json' },
 });
 
+/*
+ * The base URL is resolved per request rather than captured once, so saving a
+ * new server address in Settings takes effect immediately without a restart.
+ */
 api.interceptors.request.use((requestConfig) => {
+  const base = getApiBaseUrl();
+  requestConfig.baseURL = `${base}/api`;
+
   const auth = authStorage.get();
   if (auth?.token) {
     requestConfig.headers.Authorization = `Bearer ${auth.token}`;
@@ -48,11 +54,14 @@ api.interceptors.response.use(
   (error) => {
     const normalised = normaliseError(error);
 
-    // An expired or revoked token means the session is over: clear it so the
-    // app falls back to the login screen instead of looping on 401s.
+    // An expired or revoked token means the session is over. On the web that
+    // sends the user to the login screen. In the native app there is no login
+    // screen: the session is simply cleared so AuthContext provisions a fresh
+    // device identity instead of bouncing the user to a page that does not
+    // exist there.
     if (normalised.status === 401 && authStorage.get()?.token) {
       authStorage.clear();
-      if (!window.location.pathname.startsWith('/login')) {
+      if (!isNativePlatform && !window.location.pathname.startsWith('/login')) {
         window.location.assign('/login?expired=1');
       }
     }

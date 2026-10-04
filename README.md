@@ -88,8 +88,8 @@ Helmet, CORS, express-validator, express-rate-limit, Nodemailer (optional)
 
 **Frontend** — React 18, Vite, React Router, Axios, plain CSS
 
-**Mobile** — PWA (manifest + service worker) and Capacitor 7 for native iOS and
-Android builds
+**Mobile** — PWA (manifest + service worker) and Capacitor 7 for the native
+Android build
 
 No UI component library and no state-management library are used, so the
 frontend stays readable and dependency-light.
@@ -134,8 +134,7 @@ doc-expire/
 │       ├── context/      # Auth context
 │       └── styles/       # Global stylesheet
 │
-├── ios/                  # Capacitor iOS project (Xcode)
-└── android/              # Capacitor Android project (Gradle)
+├── android/              # Capacitor Android project (Gradle)
 ```
 
 ---
@@ -402,81 +401,65 @@ Without this the browser blocks API calls from the deployed page.
 
 ---
 
-## Mobile app
+## Android application
 
-The React client is packaged for phones two ways. Both reuse the same codebase,
-so there is no second UI to maintain.
+DocExpire is an Android mobile application for tracking important document
+expiry dates and reminders. The React client is wrapped in a native shell with
+[Capacitor](https://capacitorjs.com), which gives a real `.apk` with a native
+status bar and splash screen without rewriting any UI.
 
-### Install as a PWA (no app store)
+### No login screen
 
-The client ships a web app manifest and a service worker, so the deployed site
-can be installed straight from the browser:
+The Android app **opens straight into the DocExpire dashboard**. There is no
+login page, no registration page and no sign-in step.
 
-- **Android / Chrome** — menu → *Install app* or *Add to Home screen*
-- **iOS / Safari** — Share → *Add to Home Screen*
+The API still needs a bearer token and still keeps each account's documents
+separate, so on first launch the app quietly registers its own device account
+and remembers it. Each install gets a unique account, so one phone never sees
+another phone's documents, and the server-side ownership checks keep working
+unchanged. The backend is not modified for this.
 
-It launches in its own window with the branded icon and splash, works offline
-for the app shell, and is served over HTTPS so browsers allow installation.
+The web app is unaffected and still has its own login and registration pages,
+with any name, email and password.
 
-The service worker **never caches `/api` responses**. Document data belongs to
-one signed-in user, so caching it would risk showing one person's documents to
-another person using the same device. Only the app shell is cached.
+### Prerequisites
 
-### Native app with Capacitor
+| Requirement | Version used |
+| --- | --- |
+| Node.js | 18 or newer (built on 22) |
+| JDK | 17 or newer (built on 23) |
+| Android SDK | Platform 35 + Build-Tools 35.0.0 |
+| Gradle | Supplied by the wrapper (8.11.1), no separate install |
+| Android Studio | Optional; the command line below is enough |
 
-[Capacitor](https://capacitorjs.com) wraps the built client in a real native
-shell, giving an actual `.ipa` / `.apk` with native status bar and splash
-screen. It does **not** require rewriting any UI.
-
-```bash
-npm run mobile:sync       # build the client and copy it into ios/ and android/
-npm run mobile:ios        # build + open in Xcode
-npm run mobile:android    # build + open in Android Studio
-```
-
-The native projects (`ios/`, `android/`) are committed, so the app opens
-immediately. Always run `npm run mobile:sync` after changing anything in
-`client/`.
-
-#### Pointing the app at your API
-
-The native shell cannot use `localhost`, because that would be the phone itself.
-Before syncing, tell the client where your API lives:
+### Build the app
 
 ```bash
-# client/.env.production
-VITE_API_URL=https://docexpire.onrender.com
+npm install          # install dependencies
+npm run install:all  # server + client workspaces
+npm run build        # build the React app into client/dist
+npx cap sync android # copy client/dist into the Android project
 ```
 
-Then run `npm run mobile:sync`. Deploy the API first, otherwise the app opens
-and cannot load anything.
+`npm run mobile:sync` runs the last two steps together.
 
-#### Building the binaries
-
-**iOS** — needs Xcode and CocoaPods:
+### Open in Android Studio
 
 ```bash
-brew install cocoapods
-npm run mobile:sync
-cd ios/App && pod install
-open App.xcworkspace
+npx cap open android
 ```
 
-Then in Xcode choose a simulator and press Run, or use
-`npm run mobile:build:ios` for a command-line simulator build. Installing on a
-real iPhone requires an Apple Developer account (free accounts work for
-simulator-only testing; a device build needs a paid account and a signing
-team).
+Or open the `android/` folder directly: **File → Open**, select `android/`, and
+let Gradle sync. Use **Build → Build Bundle(s) / APK(s) → Build APK(s)** to
+produce an APK from the IDE.
 
-**Android** — needs the Android SDK (platform 35 + build-tools 35). Once that
-is done:
+### Build the APK from the command line
 
 ```bash
-npm run mobile:build:android                     # debug APK
-cd android && ./gradlew assembleRelease          # release APK
+cd android
+./gradlew assembleDebug     # android/app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease   # android/app/build/outputs/apk/release/app-release.apk
 ```
-
-Outputs land in `android/app/build/outputs/apk/{debug,release}/`.
 
 Release signing is opt-in: `android/app/build.gradle` enables it only when all
 four of these are present in `~/.gradle/gradle.properties` (chmod 600), and
@@ -490,10 +473,39 @@ DOCEXPIRE_KEY_PASSWORD=...
 ```
 
 Keystores, `*.jks`, `*.p12`, `*.keystore` and `*.mobileprovision` are all
-git-ignored; keep them out of the repository. An `.aab` for the Play Store is
+git-ignored; keep them out of the repository. An `.aab` for Google Play is
 produced with `./gradlew bundleRelease`.
 
-#### Install the ready-made APK
+### Pointing the app at your backend
+
+A phone cannot reach `localhost` on your computer, so the app needs the address
+of a deployed DocExpire server. Supply it at build time:
+
+```bash
+# client/.env.production
+VITE_API_URL=https://your-docexpire-server.onrender.com
+```
+
+then run `npm run mobile:sync` again.
+
+If no address was compiled in, the app shows a **Connect to a server** screen
+instead of an empty dashboard, and the address can be entered on the phone under
+**Server settings**. That means one signed APK can be pointed at a real backend
+without rebuilding and re-signing it. Deploy the API first, otherwise the app
+cannot load anything.
+
+### Install as a PWA (no build tools)
+
+The client also ships a web app manifest and a service worker, so a deployed
+site can be installed from the browser: **Android / Chrome** → menu → *Install
+app*.
+
+It launches in its own window with the branded icon and splash, and works
+offline for the app shell. The service worker **never caches `/api` responses**,
+because document data belongs to one account and caching it could show one
+user's documents to another person using the same device.
+
+### Install the ready-made APK
 
 Two APKs are committed under [`releases/`](releases), so the app can be installed
 without any build tools:
@@ -513,12 +525,11 @@ Both are signed (v1 + v2) and install directly, but neither can be uploaded to
 Google Play — the debug one is signed with a throwaway key, and the release key
 is not an app-signing key held by Google.
 
-**Both shipped APKs were built without `VITE_API_URL`**, because no API was
-deployed when they were produced. That is correct for the web app but not for a
-phone: the native shell falls back to its own `capacitor://localhost` origin,
-which no server answers on, so the app logs a warning and cannot load data. To
-get a usable build, set `VITE_API_URL` to your deployed HTTPS API, run
-`npm run mobile:sync`, and rebuild.
+**The shipped APKs were built without `VITE_API_URL`**, because no backend was
+deployed when they were produced. The app therefore opens on a **Connect to a
+server** screen rather than a broken dashboard, and the address can be entered
+on the phone. Alternatively, set `VITE_API_URL`, run `npm run mobile:sync` and
+rebuild to bake the address in.
 
 See [`releases/RELEASE_NOTES.md`](releases/RELEASE_NOTES.md) for checksums,
 signing details, and how to sign future versions with the same key.
@@ -736,9 +747,9 @@ by throttling.
 - The committed APKs are signed but self-hosted; verify them with
   `shasum -a 256` and `apksigner verify` before installing. Checksums are in
   [`releases/RELEASE_NOTES.md`](releases/RELEASE_NOTES.md).
-- The native web assets under `android/app/src/main/assets/public` and
-  `ios/App/App/public` are committed on purpose, so a clean checkout builds
-  APKs that actually contain the app. Refresh them with `npm run mobile:sync`.
+- The native web assets under `android/app/src/main/assets/public` are
+  committed on purpose, so a clean checkout builds APKs that actually contain
+  the app. Refresh them with `npm run mobile:sync`.
 
 ---
 

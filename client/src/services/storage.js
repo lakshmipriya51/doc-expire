@@ -1,40 +1,67 @@
 const STORAGE_KEY = 'docexpire.auth';
-
-/**
- * Where the API lives, in order of preference:
- *
- *  1. `VITE_API_URL` - an absolute origin such as https://docexpire.onrender.com
- *  2. same origin - used by the web app, because the server ships the built
- *     client and the API together. This is the correct default for every web
- *     deployment and never needs configuring.
- *
- * A Capacitor build cannot use the same origin: inside a native WebView the
- * origin is `capacitor://localhost`, which has no API behind it. Native builds
- * therefore MUST define `VITE_API_URL` at build time. When it is missing we fail
- * loudly instead of silently pointing at localhost, because that is the one
- * mistake that produces an app that launches but cannot talk to a server.
- */
-const configuredBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+const API_URL_KEY = 'docexpire.apiUrl';
 
 const isNativePlatform =
   typeof window !== 'undefined' &&
   typeof window.Capacitor !== 'undefined' &&
-  window.Capacitor.isNativePlatform?.();
+  Boolean(window.Capacitor.isNativePlatform?.());
 
-if (isNativePlatform && !configuredBaseUrl) {
-  console.error(
-    '[DocExpire] VITE_API_URL is not set. The mobile app cannot reach the API.\n' +
-      '  Set VITE_API_URL in client/.env.production to your deployed DocExpire URL\n' +
-      '  (for example https://docexpire.onrender.com) and run "npm run mobile:sync".',
-  );
-}
+/**
+ * Where the API lives, in order of preference:
+ *
+ *  1. A URL saved on the device (Settings -> Server). This exists so an
+ *     installed APK can be pointed at a real backend from the phone, without
+ *     rebuilding and re-signing the app for every environment.
+ *  2. `VITE_API_URL` - compiled in at build time.
+ *  3. The same origin - correct for the web app, because the server ships the
+ *     built client and the API together, so the browser needs no configuration.
+ *
+ * A Capacitor build cannot use the same origin: inside a native WebView the
+ * origin is `capacitor://localhost` (or `https://localhost`), which has no API
+ * behind it. Native builds therefore need an explicit backend URL, which is
+ * why the app shows an offline screen with a link to Settings instead of a
+ * blank dashboard when none is set.
+ */
+const compiledBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
 
-let API_BASE_URL = configuredBaseUrl;
+let fallbackBaseUrl = compiledBaseUrl;
 
-if (import.meta.env.DEV && !configuredBaseUrl) {
+if (import.meta.env.DEV && !compiledBaseUrl) {
   // Vite serves the client from :5173 while the API runs on :5000, so local
   // development needs an explicit cross-origin base URL.
-  API_BASE_URL = 'http://localhost:5000';
+  fallbackBaseUrl = 'http://localhost:5000';
+}
+
+/** Never point at localhost from a real device; it would mean the phone itself. */
+function normaliseBaseUrl(url) {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+function readStoredBaseUrl() {
+  try {
+    return normaliseBaseUrl(window.localStorage.getItem(API_URL_KEY));
+  } catch {
+    return '';
+  }
+}
+
+export function getApiBaseUrl() {
+  return readStoredBaseUrl() || fallbackBaseUrl;
+}
+
+export function setApiBaseUrl(url) {
+  const clean = normaliseBaseUrl(url);
+  window.localStorage.setItem(API_URL_KEY, clean);
+  return clean;
+}
+
+export function clearApiBaseUrl() {
+  window.localStorage.removeItem(API_URL_KEY);
+}
+
+/** True when the app still has no usable backend to talk to. */
+export function isMissingServerUrl() {
+  return !getApiBaseUrl();
 }
 
 /**
@@ -64,4 +91,4 @@ export const authStorage = {
   },
 };
 
-export { API_BASE_URL };
+export { isNativePlatform };

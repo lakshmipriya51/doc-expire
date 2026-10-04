@@ -2,7 +2,7 @@
   "name": "doc-expire",
   "version": "1.0.0",
   "private": true,
-  "description": "DocExpire - Never miss a document renewal again",
+  "description": "DocExpire - Android app for tracking document expiry dates and reminders",
   "scripts": {
     "install:all": "npm install --prefix server && npm install --prefix client",
     "dev": "node scripts/dev.js",
@@ -18,11 +18,9 @@
     "smoke": "node server/scripts/smoke-test.js",
     "build": "npm run build --prefix client",
     "icons": "node scripts/generate-icons.js",
-    "mobile:sync": "npm run build && cap sync",
-    "mobile:ios": "npm run mobile:sync && cap open ios",
+    "mobile:sync": "npm run build && cap sync android",
     "mobile:android": "npm run mobile:sync && cap open android",
-    "mobile:build:android": "npm run mobile:sync && cd android && ./gradlew assembleDebug",
-    "mobile:build:ios": "npm run mobile:sync && cd ios/App && xcodebuild -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build build"
+    "mobile:build:android": "npm run mobile:sync && cd android && ./gradlew assembleDebug"
   },
   "devDependencies": {
     "@capacitor/android": "^7.6.9",
@@ -30,7 +28,6 @@
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.6.9",
     "@capacitor/core": "^7.6.9",
-    "@capacitor/ios": "^7.6.9",
     "@capacitor/splash-screen": "^7.0.5",
     "@capacitor/status-bar": "^7.0.6"
   }

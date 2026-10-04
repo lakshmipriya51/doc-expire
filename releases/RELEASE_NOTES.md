@@ -1,15 +1,20 @@
 # DocExpire 1.0 - release notes
 
-First release of DocExpire: a document expiry tracker that runs as a web app,
-an installable PWA, and a native Android/iOS app backed by one Express + MongoDB
-service.
+First release of DocExpire: an Android mobile application for tracking document
+expiry dates and reminders, backed by one Express + MongoDB service.
+
+The Android app opens straight into the dashboard — there is no login or
+registration screen in the APK. On first launch it registers its own per-device
+account with the API, so each install stays isolated from every other install
+while the server-side ownership checks keep working unchanged. The web build is
+unaffected and keeps its own login and registration pages.
 
 ## Artifacts
 
 | File | Size | SHA-256 | Signed with |
 | --- | --- | --- | --- |
-| `docexpire-android-1.0-release.apk` | 3,492,372 bytes | `288a5ff56a1b03140aa9b1f1a1ed8fa75147b715375ce60ff3ea94bf37a020fe` | DocExpire release key |
-| `docexpire-android-1.0-debug.apk` | 4,829,887 bytes | `8bdf7459d4c419298b2518c54ee053b9852372b2a4d3daf187b32a3def3e07e7` | Android debug key |
+| `docexpire-android-1.0-release.apk` | 3,493,817 bytes | `446087afcfbcff0827929e8782004b6158d45fcd928130e0ee5880f933a4f728` | DocExpire release key |
+| `docexpire-android-1.0-debug.apk` | 4,831,695 bytes | `8ec39397f2bb5bc8cbef7a8e099c7b9d024dc06a8099c6e34c57349bcd5ad897` | Android debug key |
 
 The release APK is signed with APK Signature Scheme v1 **and** v2, so it installs
 on every Android version from 7.0 up. Both artifacts contain the identical web
@@ -99,22 +104,30 @@ Capacitor scheme in `capacitor.config.json`.
 
 ## What was verified
 
-- 46/46 backend tests and 27/27 HTTP smoke tests pass against the shipped code.
+- 48/48 backend tests and 27/27 HTTP smoke tests pass against the shipped code.
 - Web production build is free of any `localhost` reference.
 - Android `assembleDebug` and `assembleRelease` both succeed; signatures and
   bundle contents verified.
-- iOS simulator build succeeds (`BUILD SUCCEEDED`), bundle `com.docexpire.app`.
+- The app's silent device sign-in was exercised end to end against the running
+  API: register (201) → validate session (200) → create document (201) →
+  dashboard stats (200), and a repeated register correctly returns 409 and falls
+  back to login (200).
 - Cross-user access control on read, update, delete and file download is
   enforced by tests, not just by inspection.
 - Uploads are validated by magic bytes, not just by the declared MIME type.
 
 ## Known limitations
 
-- **No iOS IPA is published.** Device builds need an Apple Developer team and a
-  provisioning profile, neither of which is available here.
+- **No backend is deployed yet.** The shipped APKs were built without
+  `VITE_API_URL`, so on first launch they show a **Connect to a server** screen
+  where the address of a deployed DocExpire API can be entered; the app then
+  signs the device in automatically. Nothing else is required, and no rebuild or
+  re-signing is needed to point the APK at a server. Set `VITE_API_URL` and
+  rebuild instead if you prefer the address baked into the binary.
 - **Uploads are not in the APK or the repo.** On Render's free plan the
   container filesystem is wiped on every deploy and restart. Mount a disk or
   switch to a paid plan before relying on uploaded files.
 - **Email reminders are off** until SMTP credentials are configured.
-- The web app has been exercised over HTTP, not through an automated browser
-  test, so there is no scripted coverage of the rendered UI itself.
+- The UI has been exercised over HTTP and by build/lint, not through an
+  automated browser test, so there is no scripted coverage of the rendered
+  screens themselves.
